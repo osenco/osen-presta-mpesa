@@ -1,301 +1,101 @@
 <?php
-/**
- * osenmpesa module main file.
- *
- * @author    0RS <hi@osen.co.ke>
- * @link http://osen.co.ke/
- * @copyright Copyright &copy; 2009-2016 Osen Concepts Kenya
- * @license   http://www.opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
- * @version 2.0.1
- */
-class Osenmpesa extends PaymentModule
+/*
+* 2007-2015 PrestaShop
+*
+* NOTICE OF LICENSE
+*
+* This source file is subject to the Academic Free License (AFL 3.0)
+* that is bundled with this package in the file LICENSE.txt.
+* It is also available through the world-wide-web at this URL:
+* http://opensource.org/licenses/afl-3.0.php
+* If you did not receive a copy of the license and are unable to
+* obtain it through the world-wide-web, please send an email
+* to license@prestashop.com so we can send you a copy immediately.
+*
+* DISCLAIMER
+*
+* Do not edit or add to this file if you wish to upgrade PrestaShop to newer
+* versions in the future. If you wish to customize PrestaShop for your
+* needs please refer to http://www.prestashop.com for more information.
+*
+*  @author PrestaShop SA <contact@prestashop.com>
+*  @copyright  2007-2015 PrestaShop SA
+*  @license    http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
+*  International Registered Trademark & Property of PrestaShop SA
+*/
+
+use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
+
+if (!defined('_PS_VERSION_')) {
+    exit;
+}
+
+class OsenMpesa extends PaymentModule
 {
-    private $paysystems = false;
+    protected $_html = '';
+    protected $_postErrors = array();
+
+    public $details;
+    public $owner;
+    public $address;
+    public $extra_mail_vars;
 
     public function __construct()
     {
-        $this->name = 'osenmpesa';
+        $this->name = 'paymentexample';
         $this->tab = 'payments_gateways';
-        $this->version = '2.4.0';
-        $this->author = 'Osen Concepts Kenya';
-        $this->need_instance = 1;
-        $this->module_key = 'a4e3c26ec6e4316dccd6d7da5ca30411';
-        $this->controllers = array('payment', 'validation');
-        $this->ps_versions_compliancy['min'] = '1.6.0';
-        $this->author_uri = 'http://addons.prestashop.com/ru/payments-gateways/5507-universal-payment-module.html';
+        $this->version = '1.0.0';
+        $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
+        $this->author = 'PrestaShop';
+        $this->controllers = array('validation');
+        $this->is_eu_compatible = 1;
 
         $this->currencies = true;
         $this->currencies_mode = 'checkbox';
-        $this->bootstrap = true;
 
+        $this->bootstrap = true;
         parent::__construct();
 
-        $this->displayName = $this->l('Universal Payment Module');
-        $this->description = $this->l('Payment methods creating.');
-        Shop::addTableAssociation('osenmpesa_system', array('type' => 'shop'));
+        $this->displayName = $this->l('Payment Example');
+        $this->description = $this->l('Description of Payment Example');
+
+        if (!count(Currency::checkPaymentCurrencies($this->id))) {
+            $this->warning = $this->l('No currency has been set for this module.');
+        }
     }
 
     public function install()
     {
-        Db::getInstance()->Execute('CREATE TABLE `' . _DB_PREFIX_ . 'osenmpesa_system` (
-				`id_osenmpesa_system` INT(10) NOT NULL AUTO_INCREMENT,
-				`id_order_state` INT( 10 ) NOT NULL DEFAULT \'' . Configuration::get('PS_OS_PREPARATION') . '\',
-				`active` TINYINT(1) UNSIGNED NOT NULL DEFAULT \'0\',
-				`position` INT(10) UNSIGNED NOT NULL DEFAULT \'0\',
-				`id_cart_rule` INT(10) UNSIGNED NOT NULL DEFAULT \'0\',
-				`cart_type` tinyint(4) NOT NULL DEFAULT \'0\',
-                `date_add` datetime NOT NULL,
-                `date_upd` datetime NOT NULL,
-				PRIMARY KEY (`id_osenmpesa_system`)
-			) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8');
-        Db::getInstance()->Execute('CREATE TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_lang` (
-				`id_osenmpesa_system` INT(10) UNSIGNED NOT NULL,
-				`id_lang` INT(10) UNSIGNED NOT NULL,
-				`name` VARCHAR(128) NOT NULL,
-				`description_short` VARCHAR(255) NOT NULL,
-				`description` TEXT NULL,
-				`description_success` TEXT NULL,
-				UNIQUE INDEX `osenmpesa_system_lang_index` (`id_osenmpesa_system`, `id_lang`)
-			) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8');
-        Db::getInstance()->Execute('CREATE TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_carrier` (
-		  `id_osenmpesa_system` int(10) unsigned NOT NULL,
-		  `id_carrier` int(10) unsigned NOT NULL,
-		  UNIQUE KEY `id_osenmpesa_system` (`id_osenmpesa_system`,`id_carrier`)
-		) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8');
-        Db::getInstance()->Execute('CREATE TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_group` (
-		  `id_osenmpesa_system` int(10) unsigned NOT NULL,
-		  `id_group` int(10) unsigned NOT NULL,
-		  UNIQUE KEY `id_osenmpesa_system` (`id_osenmpesa_system`,`id_group`)
-		) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8');
-        Db::getInstance()->Execute('ALTER TABLE  `' . _DB_PREFIX_ . 'orders` ADD  `up_fields` VARCHAR( 255 ) NOT NULL DEFAULT ""');
-        Db::getInstance()->Execute('CREATE TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_shop` (
-		  `id_osenmpesa_system` int(10) unsigned NOT NULL,
-		  `id_shop` int(10) unsigned NOT NULL,
-		  `date_add` datetime NOT NULL,
-          `date_upd` datetime NOT NULL,
-		  UNIQUE KEY `id_osenmpesa_system` (`id_osenmpesa_system`,`id_shop`)
-		) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8');
-
-        return parent::install()
-        && $this->registerHook('displayPayment')
-        && $this->registerHook('actionCarrierUpdate')
-        && $this->registerHook('displayOrderDetail')
-        && $this->registerHook('displayAdminOrderContentOrder')
-        && $this->registerHook('displayAdminOrderTabOrder')
-        && $this->registerHook('displayPaymentReturn')
-        && $this->registerHook('advancedPaymentOptions')
-        && mkdir(_PS_IMG_DIR_ . 'pay')
-        && self::installModuleTab('AdminMPesa',
-            array('ru' => 'Платежные системы', 'default' => 'Pay Systems', 'it' => 'Metodi di pagamento', 'cs' => 'Platební metody'),
-            'AdminParentModules');
-    }
-
-    public function uninstall()
-    {
-        Db::getInstance()->Execute('DROP TABLE `' . _DB_PREFIX_ . 'osenmpesa_system`');
-        Db::getInstance()->Execute('DROP TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_lang`');
-        Db::getInstance()->Execute('DROP TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_carrier`');
-        Db::getInstance()->Execute('DROP TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_group`');
-        Db::getInstance()->Execute('ALTER TABLE  `' . _DB_PREFIX_ . 'orders` DROP  `up_fields`');
-        Db::getInstance()->Execute('DROP TABLE `' . _DB_PREFIX_ . 'osenmpesa_system_shop`');
-
-        self::uninstallModuleTab('AdminMPesa');
-        return self::rrmdir(_PS_IMG_DIR_ . 'pay')
-        && parent::uninstall();
-    }
-
-    public function rrmdir($dir)
-    {
-        if (is_dir($dir)) {
-            $objects = scandir($dir);
-            foreach ($objects as $object) {
-                if ($object != '.' && $object != '..') {
-                    if (filetype($dir . '/' . $object) == 'dir') {
-                        self::rrmdir($dir . '/' . $object);
-                    } else {
-                        unlink($dir . '/' . $object);
-                    }
-                }
-
-            }
-            reset($objects);
-            rmdir($dir);
-        }
-        return true;
-    }
-
-    private function installModuleTab($tab_class, $tab_name, $tab_parent)
-    {
-        if (!($id_tab_parent = Tab::getIdFromClassName($tab_parent))) {
-            return false;
-        }
-
-        $tab = new Tab();
-        $languages = Language::getLanguages(true);
-        foreach ($languages as $language) {
-            if (!isset($tab_name[$language['iso_code']])) {
-                $tab->name[$language['id_lang']] = $tab_name['default'];
-            } else {
-                $tab->name[(int)$language['id_lang']] = $tab_name[$language['iso_code']];
-            }
-        }
-        $tab->class_name = $tab_class;
-        $tab->module = $this->name;
-        $tab->id_parent = $id_tab_parent;
-        $tab->active = 1;
-
-        if (!$tab->save()) {
+        if (!parent::install() || !$this->registerHook('paymentOptions') || !$this->registerHook('paymentReturn')) {
             return false;
         }
         return true;
     }
 
-    private function uninstallModuleTab($tab_class)
-    {
-        $id_tab = Tab::getIdFromClassName($tab_class);
-        if ($id_tab != 0) {
-            $tab = new Tab($id_tab);
-            $tab->delete();
-            return true;
-        }
-        return false;
-    }
-
-    public function hookdisplayPaymentReturn($params)
-    {
-        require_once(dirname(__FILE__) . '/classes/MPesa.php');
-        $paysistem = new MPesa((int)Tools::getValue('id_osenmpesa_system'), $this->context->cookie->id_lang);
-        $description_success = str_replace(array('%total%', '%order_number%', '%order_id%'),
-            array(
-                Tools::DisplayPrice($params['objOrder']->total_paid),
-                '#' . $params['objOrder']->reference,
-                $params['objOrder']->id
-            ),
-            $paysistem->description_success);
-
-        require_once(dirname(__FILE__) . '/classes/UpOrder.php');
-        $up_order = new UpOrder($params['objOrder']->id);
-        $fields = $up_order->getUpFields();
-        foreach ($fields as $key => $field)
-            $description_success = str_replace('%up_'.$key.'%', $field, $description_success);
-
-        return '<div class="box">' . $description_success . '</div>';
-    }
-
-    public function hookdisplayAdminOrderTabOrder($params)
-    {
-        return $this->display(__FILE__, 'displayAdminOrderTabOrder.tpl');
-    }
-
-    public function hookdisplayAdminOrderContentOrder($params)
-    {
-        require_once(dirname(__FILE__) . '/classes/UpOrder.php');
-        $order = new UpOrder($params['order']->id);
-        $this->smarty->assign(array(
-            'up_fields' => $order->getUpFields()
-        ));
-        return $this->display(__FILE__, 'displayAdminOrderContentOrder.tpl');
-    }
-
-    public function hookactionCarrierUpdate($params)
-    {
-        require_once(dirname(__FILE__) . '/classes/MPesa.php');
-        MPesa::updateCarrier($params['id_carrier'], $params['carrier']->id);
-    }
-
-    public function hookdisplayOrderDetail($params)
-    {
-        if ($params['order']->module != $this->name) {
-            return false;
-        }
-
-        require_once(dirname(__FILE__) . '/classes/MPesa.php');
-
-        if (!($id_paysystem = MPesa::getIdByName($params['order']->payment))) {
-            return false;
-        }
-
-        $paysystem = new MPesa($id_paysystem, $this->context->cookie->id_lang);
-        return str_replace(array('%total%', '%order_number%'),
-            array(Tools::DisplayPrice($params['order']->total_paid), '#' . $params['order']->reference),
-            $paysystem->description_success);
-    }
-
-    public function hookdisplayPayment($params)
+    public function hookPaymentOptions($params)
     {
         if (!$this->active) {
             return;
         }
+
         if (!$this->checkCurrency($params['cart'])) {
             return;
         }
 
-        $virtual = $this->context->cart->isVirtualCart();
-        $paysystems = $this->getPaySystems($params);
-        foreach ($paysystems as $key => $paysystem)
-        {
-            if (($paysystem['cart_type'] == MPesa::CART_REAL) && $virtual)
-                unset($paysystems[$key]);
-            elseif (($paysystem['cart_type'] == MPesa::CART_VIRTUAL) && !$virtual)
-                unset($paysystems[$key]);
-        }
-        $this->smarty->assign(array(
-            'this_path' => $this->_path,
-            'this_path_ssl' => Tools::getShopDomainSsl(true, true) . __PS_BASE_URI__ . 'modules/' . $this->name . '/',
-            'osenmpesa' => $paysystems,
-            'osenmpesa_onepage' => Configuration::get('osenmpesa_onepage'),
-        ));
-        return $this->display(__FILE__, 'payment.tpl');
-    }
+        $payment_options = [
+            $this->getOfflinePaymentOption(),
+            $this->getExternalPaymentOption(),
+            $this->getEmbeddedPaymentOption(),
+            $this->getIframePaymentOption(),
+        ];
 
-    public function getPaySystems($params)
-    {
-        if ($this->paysystems) {
-            return $this->paysystems;
-        }
-
-        require_once(dirname(__FILE__) . '/classes/MPesa.php');
-
-        $paysystems = MPesa::getPaySystems($this->context->language->id, true,
-            $this->context->cart->id_carrier, $this->context->customer->getGroups());
-
-        foreach ($paysystems as &$paysystem) {
-            $paysystem['description'] = str_replace(array('%total%'),
-                array(Tools::DisplayPrice($params['cart']->getOrderTotal(true, Cart::BOTH))),
-                $paysystem['description']);
-        }
-        unset($paysystem);
-        $this->paysystems = $paysystems;
-        return $paysystems;
-    }
-
-    public function hookAdvancedPaymentOptions($params)
-    {
-        if (!$this->active) {
-            return;
-        }
-        if (!$this->checkCurrency($params['cart'])) {
-            return;
-        }
-
-        $options = array();
-        $paysystems = $this->getPaySystems($params);
-        foreach ($paysystems as $paysystem) {
-            $po = new Core_Business_Payment_PaymentOption();
-            $po->setCallToActionText($paysystem['name'])
-                ->setAction($this->context->link->getModuleLink($this->name, 'payment',
-                    array('id_osenmpesa_system' => $paysystem['id_osenmpesa_system']), true))
-                ->setLogo(Media::getMediaPath(_PS_IMG_ . 'pay/' . $paysystem['id_osenmpesa_system'] . '.jpg'))
-                ->setModuleName($this->name);
-            $options[] = $po;
-        }
-        return $options;
+        return $payment_options;
     }
 
     public function checkCurrency($cart)
     {
         $currency_order = new Currency($cart->id_currency);
-        $currencies_module = $this->getCurrency((int)$cart->id_currency);
+        $currencies_module = $this->getCurrency($cart->id_currency);
 
         if (is_array($currencies_module)) {
             foreach ($currencies_module as $currency_module) {
@@ -307,100 +107,75 @@ class Osenmpesa extends PaymentModule
         return false;
     }
 
-    public function getContent()
+    public function getOfflinePaymentOption()
     {
-        $output = '';
-        $output .= $this->postProcess();
-        $output .= $this->renderSettingsForm();
-        return $output;
+        $offlineOption = new PaymentOption();
+        $offlineOption->setCallToActionText($this->l('Pay offline'))
+                      ->setAction($this->context->link->getModuleLink($this->name, 'validation', array(), true))
+                      ->setAdditionalInformation($this->context->smarty->fetch('module:paymentexample/views/templates/front/payment_infos.tpl'))
+                      ->setLogo(Media::getMediaPath(_PS_MODULE_DIR_.$this->name.'/payment.jpg'));
+
+        return $offlineOption;
     }
 
-    private function initToolbar()
+    public function getExternalPaymentOption()
     {
-        $this->toolbar_btn['save'] = array(
-            'href' => '#',
-            'desc' => $this->l('Save')
-        );
-        return $this->toolbar_btn;
+        $externalOption = new PaymentOption();
+        $externalOption->setCallToActionText($this->l('Pay external'))
+                       ->setAction($this->context->link->getModuleLink($this->name, 'validation', array(), true))
+                       ->setInputs([
+                            'token' => [
+                                'name' =>'token',
+                                'type' =>'hidden',
+                                'value' =>'12345689',
+                            ],
+                        ])
+                       ->setAdditionalInformation($this->context->smarty->fetch('module:paymentexample/views/templates/front/payment_infos.tpl'))
+                       ->setLogo(Media::getMediaPath(_PS_MODULE_DIR_.$this->name.'/payment.jpg'));
+
+        return $externalOption;
     }
 
-    private function renderSettingsForm()
+    public function getEmbeddedPaymentOption()
     {
-        $fields_form = array(
-            'form' => array(
-                'legend' => array(
-                    'title' => $this->l('Settings'),
-                    'icon' => 'icon-cogs',
-                ),
-                'description' => $this->l('Add payment methods on') . ' <a href="?tab=AdminMPesa&token=' . Tools::getAdminToken('AdminMPesa' .
-                        Tab::getIdFromClassName('AdminMPesa') . $this->context->cookie->id_employee) .
-                    '" class="link">' . $this->l('Modules>Pay Systems tab') . '</a>',
-                'input' => array(
-                    array(
-                        'type' => 'switch',
-                        'label' => $this->l('Confirmation button'),
-                        'hint' => $this->l('Confirmation button directly in the checkout page'),
-                        'name' => 'osenmpesa_onepage',
-                        'is_bool' => true,
-                        'values' => array(
-                            array(
-                                'id' => 'osenmpesa_onepage_on',
-                                'value' => 1,
-                                'label' => $this->l('Enabled')
-                            ),
-                            array(
-                                'id' => 'osenmpesa_onepage_off',
-                                'value' => 0,
-                                'label' => $this->l('Disabled')
-                            )
-                        )
-                    ),
-                ),
-                'submit' => array(
-                    'name' => 'submitSave',
-                    'title' => $this->l('Save'),
-                ),
-            ),
-        );
+        $embeddedOption = new PaymentOption();
+        $embeddedOption->setCallToActionText($this->l('Pay embedded'))
+                       ->setForm($this->generateForm())
+                       ->setAdditionalInformation($this->context->smarty->fetch('module:paymentexample/views/templates/front/payment_infos.tpl'))
+                       ->setLogo(Media::getMediaPath(_PS_MODULE_DIR_.$this->name.'/payment.jpg'));
 
-        $helper = new HelperForm();
-        $helper->show_toolbar = false;
-        $helper->table = $this->table;
-        $lang = new Language((int)Configuration::get('PS_LANG_DEFAULT'));
-        $helper->default_form_language = $lang->id;
-        $helper->allow_employee_form_lang = Configuration::get('PS_BO_ALLOW_EMPLOYEE_FORM_LANG') ? Configuration::get('PS_BO_ALLOW_EMPLOYEE_FORM_LANG') : 0;
-        $this->fields_form = array();
-        $helper->identifier = $this->identifier;
-        $helper->submit_action = 'submitSave';
-        $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false)
-            . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
-        $helper->token = Tools::getAdminTokenLite('AdminModules');
-        $helper->tpl_vars = array(
-            'fields_value' => $this->getConfigFieldsValues(),
-            'languages' => $this->context->controller->getLanguages(),
-            'id_language' => $this->context->language->id,
-        );
-
-        return $helper->generateForm(array($fields_form));
-
+        return $embeddedOption;
     }
 
-    public function getConfigFieldsValues()
+    public function getIframePaymentOption()
     {
-        $fields_value = array();
-        $fields_value['osenmpesa_onepage'] = Configuration::get('osenmpesa_onepage');
+        $iframeOption = new PaymentOption();
+        $iframeOption->setCallToActionText($this->l('Pay iframe'))
+                     ->setAction($this->context->link->getModuleLink($this->name, 'iframe', array(), true))
+                     ->setAdditionalInformation($this->context->smarty->fetch('module:paymentexample/views/templates/front/payment_infos.tpl'))
+                     ->setLogo(Media::getMediaPath(_PS_MODULE_DIR_.$this->name.'/payment.jpg'));
 
-        return $fields_value;
+        return $iframeOption;
     }
 
-    protected function postProcess()
+    protected function generateForm()
     {
-        if (Tools::isSubmit('submitSave')) {
-            if (Configuration::updateValue('osenmpesa_onepage', (int)Tools::getValue('osenmpesa_onepage'))) {
-                return $this->displayConfirmation($this->l('Settings updated'));
-            } else {
-                return $this->displayError($this->l('Confirmation button') . ': ' . $this->l('Invaild choice'));
-            }
+        $months = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $months[] = sprintf("%02d", $i);
         }
+
+        $years = [];
+        for ($i = 0; $i <= 10; $i++) {
+            $years[] = date('Y', strtotime('+'.$i.' years'));
+        }
+
+        $this->context->smarty->assign([
+            'action' => $this->context->link->getModuleLink($this->name, 'validation', array(), true),
+            'months' => $months,
+            'years' => $years,
+        ]);
+
+        return $this->context->smarty->fetch('module:paymentexample/views/templates/front/payment_form.tpl');
     }
 }
